@@ -1,25 +1,64 @@
 package org.example.lexer;
 
 import java.util.ArrayList;
+import java.util.HashMap;
 import java.util.List;
 
 import org.example.exception.ParseException;
 
 public class Lexer {
     private String input;
-    private int length;
 
     private int position;
+    private int line;
+    private int column;
+
+    private static final HashMap<String, TokenType> keywords = new HashMap<>();
+    static {
+        keywords.put("var", TokenType.VAR);
+        keywords.put("print", TokenType.PRINT);
+        keywords.put("if", TokenType.IF);
+        keywords.put("else", TokenType.ELSE);
+        keywords.put("while", TokenType.WHILE);
+    }
+
+    private static final HashMap<String, TokenType> operators = new HashMap<>();
+    static {
+        operators.put("+", TokenType.PLUS);
+        operators.put("-", TokenType.MINUS);
+        operators.put("*", TokenType.STAR);
+        operators.put("/", TokenType.SLASH);
+        operators.put("=", TokenType.EQ);
+
+        operators.put(">", TokenType.GT);
+        operators.put("<", TokenType.LT);
+        operators.put(">=", TokenType.GTEQ);
+        operators.put("<=", TokenType.LTEQ);
+        operators.put("==", TokenType.EQEQ);
+        operators.put("!=", TokenType.NEQ);
+
+        operators.put("!", TokenType.EXCL);
+        operators.put("&&", TokenType.AND);
+        operators.put("||", TokenType.OR);
+
+        operators.put("(", TokenType.LPAREN);
+        operators.put(")", TokenType.RPAREN);
+        operators.put("{", TokenType.LBRACE);
+        operators.put("}", TokenType.RBRACE);
+        operators.put(";", TokenType.SEMICOLON);
+
+    }
 
     public Lexer(String input) {
         this.input = input;
-        this.length = input.length();
         this.position = 0;
+        this.line = 1;
+        this.column = 1;
     }
 
     public List<Token> tokenize() throws ParseException {
         List<Token> result = new ArrayList<>();
-        while (position < length) {
+        while (position < input.length()) {
             var current = peek(input);
 
             if (Character.isWhitespace(current)) {
@@ -29,105 +68,90 @@ public class Lexer {
             } else if (Character.isLetter(current)) {
                 tokenizeWord(result);
             } else {
-                tokenizeOperator(result);
+                tokenizeOperatorOrPunctuation(result);
             }
         }
+
+        result.add(new Token(TokenType.EOF, "", position, line, column));
 
         return result;
     }
 
     private void tokenizeNumber(List<Token> result) {
-        var start = position;
+        int startPos = position;
+        int startLine = line;
+        int startColumn = column;
 
         while (Character.isDigit(peek(input))) {
             next();
         }
 
-        var numberString = input.substring(start, position - start);
-        result.add(new Token(TokenType.NUMBER, numberString, start));
+        var numberString = input.substring(startPos, position);
+        result.add(new Token(TokenType.NUMBER, numberString, startPos, startLine, startColumn));
     }
 
     private void tokenizeWord(List<Token> result) {
-        var start = position;
+        int startPos = position;
+        int startLine = line;
+        int startColumn = column;
 
         while (Character.isLetterOrDigit(peek(input))) {
             next();
         }
 
-        var word = input.substring(start, position - start);
+        var word = input.substring(startPos, position);
+        var type = keywords.getOrDefault(word, TokenType.ID);
 
-        switch (word) {
-            case "var":
-                addToken(result, TokenType.VAR, word, start);
-                break;
-            case "print":
-                addToken(result, TokenType.PRINT, word, start);
-                break;
-            case "if":
-                addToken(result, TokenType.IF, word, start);
-                break;
-            case "else":
-                addToken(result, TokenType.ELSE, word, start);
-                break;
-            case "while":
-                addToken(result, TokenType.WHILE, word, start);
-                break;
-            default:
-                addToken(result, TokenType.ID, word, start);
-                break;
-        }
+        result.add(new Token(type, word, startPos, startLine, startColumn));
     }
 
-    private void tokenizeOperator(List<Token> result) throws ParseException {
-        var current = peek(input);
-        var start = position;
+    private void tokenizeOperatorOrPunctuation(List<Token> result) throws ParseException {
+        int startPos = position;
+        int startLine = line;
+        int startColumn = column;
 
-        switch(current) {
-            case '+':
+        if (position + 1 < input.length()) {
+            var twoChars = input.substring(position, position + 2);
+            if (operators.containsKey(twoChars)) {
                 next();
-                addToken(result, TokenType.PLUS, "+", start);
-                break;
-            case '-':
                 next();
-                addToken(result, TokenType.MINUS, "-", start);
-                break;
-            case '*':
-                next();
-                addToken(result, TokenType.STAR, "*", start);
-                break;
-            case '/':
-                next();
-                addToken(result, TokenType.SLASH, "/", start);
-                break;
-            case '=':
-                next();
-                addToken(result, TokenType.EQ, "=", start);
-                break;
-            case ';':
-                next();
-                addToken(result, TokenType.SEMICOLON, ";", start);
-                break;
-            default:
-                throw new ParseException("Unexpected character '" + current + "' at position" + position);
+                result.add(new Token(operators.get(twoChars), twoChars, startPos, startLine, startColumn));
+                return;
+            }
+        }
+
+        var oneChar = input.substring(position, position + 1);
+        if (operators.containsKey(oneChar)) {
+            next();
+            result.add(new Token(operators.get(oneChar), oneChar, startPos, startLine, startColumn));
+        } else {
+            var badChar = peek(input);
+            throw new ParseException(String.format("[Lexer Error] Unexpected character '%s' at Line %d, Column %d",
+                    badChar, startLine, startColumn));
         }
     }
 
     private char peek(String input) {
-        if (position >= length) {
+        if (position >= input.length()) {
             return '\0';
         }
         return input.charAt(position);
     }
 
     private char next() {
-        if (position >= length) {
+        if (position >= input.length()) {
             return '\0';
         }
 
-        return input.charAt(position++);
-    }
+        char current = input.charAt(position++);
 
-    private void addToken(List<Token> result, TokenType type, String value, int position) {
-        result.add(new Token(type, value, position));
+        if (current == '\n') {
+            line++;
+            column = 1;
+        } else {
+            column++;
+        }
+
+        return current;
     }
 }

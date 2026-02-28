@@ -7,7 +7,10 @@ import org.example.exception.ParseException;
 import org.example.lexer.Token;
 import org.example.lexer.TokenType;
 import org.example.parser.expression.AssignExpression;
+import org.example.parser.expression.BinaryExpression;
 import org.example.parser.expression.Expression;
+import org.example.parser.expression.NumberExpression;
+import org.example.parser.expression.UnaryExpression;
 import org.example.parser.expression.VariableExpression;
 import org.example.parser.statement.BlockStatement;
 import org.example.parser.statement.ExpressionStatement;
@@ -135,7 +138,112 @@ public class Parser {
             if (expression instanceof VariableExpression variableExpression) {
                 return new AssignExpression(variableExpression.getName(), value);
             }
+
+            throw new ParseException(String.format("[Parser Error] Line %d, Col %d: Invalid assignment target.",
+                    equals.getLine(), equals.getColumn()));
         }
+
+        return expression;
+    }
+
+    private Expression parseLogicalOr() {
+        Expression expression = parseLogicalAnd();
+
+        while (match(List.of(TokenType.OR))) {
+            TokenType operator = previous().getType();
+            Expression right = parseLogicalAnd();
+            expression = new BinaryExpression(expression, operator, right);
+        }
+
+        return expression;
+    }
+
+    private Expression parseLogicalAnd() {
+        Expression expression = parseEquality();
+
+        while (match(List.of(TokenType.AND))) {
+            TokenType operator = previous().getType();
+            Expression right = parseEquality();
+            expression = new BinaryExpression(expression, operator, right);
+        }
+
+        return expression;
+    }
+
+    private Expression parseEquality() {
+        Expression expression = parseComparison();
+
+        while (match(List.of(TokenType.EQEQ, TokenType.NEQ))) {
+            TokenType operator = previous().getType();
+            Expression right = parseComparison();
+            expression = new BinaryExpression(expression, operator, right);
+        }
+
+        return expression;
+    }
+
+    private Expression parseComparison() {
+        Expression expression = parseTerm();
+
+        while (match(List.of(TokenType.LT, TokenType.LTEQ, TokenType.GT, TokenType.GTEQ))) {
+            TokenType operator = previous().getType();
+            Expression right = parseTerm();
+            expression = new BinaryExpression(expression, operator, right);
+        }
+
+        return expression;
+    }
+
+    private Expression parseTerm() {
+        Expression expression = parseFactor();
+
+        while (match(List.of(TokenType.PLUS, TokenType.MINUS))) {
+            TokenType operator = previous().getType();
+            Expression right = parseFactor();
+            expression = new BinaryExpression(expression, operator, right);
+        }
+
+        return expression;
+    }
+
+    private Expression parseFactor() {
+        Expression expression = parseUnary();
+
+        while (match(List.of(TokenType.STAR, TokenType.SLASH))) {
+            TokenType operator = previous().getType();
+            Expression right = parseUnary();
+            expression = new BinaryExpression(expression, operator, right);
+        }
+
+        return expression;
+    }
+
+    private Expression parseUnary() {
+        if (match(List.of(TokenType.MINUS))) {
+            TokenType operator = previous().getType();
+            Expression right = parseUnary();
+            return new UnaryExpression(operator, right);
+        }
+
+        return parsePrimary();
+    }
+
+    private Expression parsePrimary() {
+        if (match(List.of(TokenType.NUMBER))) {
+            return new NumberExpression(Double.parseDouble(previous().getValue()));
+        }
+
+        if (match(List.of(TokenType.ID))) {
+            return new VariableExpression(previous().getValue());
+        }
+
+        if (match(List.of(TokenType.LPAREN))) {
+            Expression expression = parseExpression();
+            consume(TokenType.RPAREN, "Ожидается ')' после выражения.");
+            return expression;
+        }
+
+        throw new ParseException("Ожидается выражение.");
     }
 
     private boolean match(List<TokenType> types) {
@@ -183,6 +291,7 @@ public class Parser {
         }
 
         Token token = peek();
-        throw new ParseException(message);
+        throw new ParseException(
+                String.format("[Parser Error] Line %d, Col %d: %s", token.getLine(), token.getColumn(), message));
     }
 }
